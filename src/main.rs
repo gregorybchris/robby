@@ -1,7 +1,4 @@
-use rand::{
-    distributions::{Distribution, Standard},
-    Rng, SeedableRng,
-};
+use rand::{Rng, SeedableRng};
 use rand_pcg::{Lcg128Xsl64, Pcg64};
 use std::collections::HashMap;
 use std::fmt;
@@ -14,7 +11,7 @@ const N_GENERATIONS: u32 = 1;
 const N_TRIALS: u32 = 1;
 const N_STEPS: u32 = 100;
 
-const POPULATION_SIZE: u32 = 1000;
+const POPULATION_SIZE: u32 = 10000;
 // const SELECTION_SIZE: u32 = 20;
 // const MUTATION_PROBABILITY: f32 = 0.001;
 
@@ -85,20 +82,22 @@ fn get_random_action(rng: &mut Gen, move_only: bool) -> Action {
     }
 }
 
-impl Distribution<Action> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Action {
-        match rng.gen_range(0..6) {
-            0 => Action::MoveUp,
-            1 => Action::MoveDown,
-            2 => Action::MoveLeft,
-            3 => Action::MoveRight,
-            4 => Action::MoveRandom,
-            _ => Action::PickUp,
-        }
-    }
-}
-
 const ALL_OBJECTS: [Object; 3] = [Object::Empty, Object::Can, Object::Wall];
+
+// fn print_state(state: State) {
+//     println!("[ {} ]", state.up);
+//     println!("[{}{}{}]", state.left, state.center, state.right);
+//     println!("[ {} ]", state.down);
+// }
+
+// fn print_room(room: Room) {
+//     for row in &room {
+//         for cell in row {
+//             print!("{} ", cell);
+//         }
+//         println!("");
+//     }
+// }
 
 fn get_random_location(rng: &mut Gen) -> Location {
     let row = rng.gen_range(1..=HEIGHT - 2);
@@ -145,16 +144,18 @@ struct State {
 struct Robot {
     id: ID,
     policy: HashMap<State, Action>,
+    score: f32,
 }
 
 fn create_random_robot(rng: &mut Gen, id: ID) -> Robot {
     let mut policy = HashMap::new();
+
     // TODO: Fix this to use something like itertools cartesian product
-    for up in ALL_OBJECTS.iter() {
-        for down in ALL_OBJECTS.iter() {
-            for left in ALL_OBJECTS.iter() {
-                for right in ALL_OBJECTS.iter() {
-                    for center in ALL_OBJECTS.iter() {
+    for up in &ALL_OBJECTS {
+        for down in &ALL_OBJECTS {
+            for left in &ALL_OBJECTS {
+                for right in &ALL_OBJECTS {
+                    for center in &ALL_OBJECTS {
                         let state = State {
                             up: *up,
                             down: *down,
@@ -179,14 +180,12 @@ fn create_random_robot(rng: &mut Gen, id: ID) -> Robot {
         }
     }
 
-    Robot { id, policy }
+    Robot {
+        id,
+        policy,
+        score: 0.0,
+    }
 }
-
-// fn print_state(state: State) {
-//     println!("[ {} ]", state.up);
-//     println!("[{}{}{}]", state.left, state.center, state.right);
-//     println!("[ {} ]", state.down);
-// }
 
 fn get_state(room: Room, location: Location) -> State {
     let (row, col) = location;
@@ -201,15 +200,6 @@ fn get_state(room: Room, location: Location) -> State {
         center: room[row][col],
     }
 }
-
-// fn print_room(room: Room) {
-//     for row in &room {
-//         for cell in row {
-//             print!("{} ", cell);
-//         }
-//         println!("");
-//     }
-// }
 
 fn update_room(
     rng: &mut Gen,
@@ -253,18 +243,6 @@ fn update_room(
         }
     };
     ((row, col), score)
-
-    // elif action == MOVE_RANDOM:
-    //     orientation = RANDOM.randint(0, 1)
-    //     direction = int(2 * (RANDOM.randint(0, 1) - 0.5))
-    //     if orientation == 0:
-    //         if room[row + direction][col] != WALL:
-    //             row += direction
-    //     elif orientation == 1:
-    //         if room[row][col + direction] != WALL:
-    //             col += direction
-    //     else:
-    //         raise ValueError("Not a valid orientation")
 }
 
 fn evaluate_robot(rng: &mut Gen, robot: &Robot) -> f32 {
@@ -295,33 +273,35 @@ fn evaluate_robot(rng: &mut Gen, robot: &Robot) -> f32 {
 fn main() {
     let seed = 1;
     let mut rng: Gen = Pcg64::seed_from_u64(seed);
-    // let random_value: f32 = rng.gen();
-    // println!("{}", random_value);
 
     let mut id_count = 0;
 
-    let mut population = HashMap::new();
+    println!("Creating a population of size: {}", POPULATION_SIZE);
+    let mut population: Vec<Robot> = Vec::new();
     for _ in 0..POPULATION_SIZE {
         let robot_id = id_count;
         id_count += 1;
         let robot = create_random_robot(&mut rng, robot_id);
-        population.insert(robot_id, robot);
+        population.push(robot);
     }
-    println!("Population size: {}", population.len());
 
+    println!("Evaluating population...");
     for generation_number in 0..N_GENERATIONS {
         println!("Generation: {}", generation_number);
-        let mut scores = HashMap::new();
         let mut best_score = 0.0;
-        for (robot_id, robot) in &population {
+        for robot in &mut population {
             let score = evaluate_robot(&mut rng, robot);
+            robot.score = score;
             if score > best_score {
                 println!("New best score: {}", score);
                 best_score = score
             }
-            scores.insert(robot_id, score);
+        }
+
+        population.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+
+        for robot in &population[0..10] {
+            println!("Robot {} scored {}", robot.id, robot.score)
         }
     }
-
-    // values.sort_by(|a, b| a.partial_cmp(b).unwrap());
 }

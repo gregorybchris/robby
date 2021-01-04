@@ -13,7 +13,7 @@ const N_STEPS: u32 = 300;
 
 const POPULATION_SIZE: usize = 100;
 const SELECTION_SIZE: usize = 20;
-// const MUTATION_PROBABILITY: f32 = 0.001;
+const MUTATION_PROBABILITY: f32 = 0.001;
 
 type Gen = Lcg128Xsl64;
 type Room = [[Object; WIDTH]; HEIGHT];
@@ -285,18 +285,18 @@ fn crossover_robots(rng: &mut Gen, parent_a: &Robot, parent_b: &Robot, id: ID) -
                 None => assert!(false, "Unknown policy"),
             };
         }
+        let mutation_rand: f32 = rng.gen();
+        if mutation_rand < MUTATION_PROBABILITY {
+            let random_action = get_random_action(rng, false);
+            policy.insert(*state, random_action);
+        }
     }
+
     Robot {
         id,
         policy,
         score: 0.0,
     }
-
-    //     mutation_rand = RANDOM.random()
-    //     if mutation_rand < MUTATION_PROBABILITY:
-    //         action_number = RANDOM.randint(0, len(ALL_ACTIONS) - 1)
-    //         action = ALL_ACTIONS[action_number]
-    //         child_robot[stim] = action
 }
 
 fn main() {
@@ -329,8 +329,8 @@ fn main() {
         );
 
         while population.len() < POPULATION_SIZE as usize {
-            let parent_a = &population[rng.gen_range(0..10)];
-            let parent_b = &population[rng.gen_range(0..10)];
+            let parent_a = &population[rng.gen_range(0..SELECTION_SIZE)];
+            let parent_b = &population[rng.gen_range(0..SELECTION_SIZE)];
             let child = crossover_robots(&mut rng, parent_a, parent_b, id_count);
             id_count += 1;
             population.push(child);

@@ -7,12 +7,12 @@ const WIDTH: usize = 12;
 const HEIGHT: usize = 10;
 const N_CANS: u32 = 25;
 
-const N_GENERATIONS: u32 = 1;
+const N_GENERATIONS: u32 = 50;
 const N_TRIALS: u32 = 1;
-const N_STEPS: u32 = 100;
+const N_STEPS: u32 = 300;
 
-const POPULATION_SIZE: u32 = 10000;
-// const SELECTION_SIZE: u32 = 20;
+const POPULATION_SIZE: usize = 100;
+const SELECTION_SIZE: usize = 20;
 // const MUTATION_PROBABILITY: f32 = 0.001;
 
 type Gen = Lcg128Xsl64;
@@ -148,7 +148,7 @@ struct Robot {
 }
 
 fn create_random_robot(rng: &mut Gen, id: ID) -> Robot {
-    let mut policy = HashMap::new();
+    let mut policy: HashMap<State, Action> = HashMap::new();
 
     // TODO: Fix this to use something like itertools cartesian product
     for up in &ALL_OBJECTS {
@@ -270,6 +270,35 @@ fn evaluate_robot(rng: &mut Gen, robot: &Robot) -> f32 {
     (total_score as f32) * 1.0 / (N_TRIALS as f32)
 }
 
+fn crossover_robots(rng: &mut Gen, parent_a: &Robot, parent_b: &Robot, id: ID) -> Robot {
+    let mut policy: HashMap<State, Action> = HashMap::new();
+    let parent_fraction: f32 = rng.gen();
+    for (state, action_a) in &parent_a.policy {
+        let parent_rand: f32 = rng.gen();
+        if parent_rand < parent_fraction {
+            policy.insert(*state, *action_a);
+        } else {
+            match parent_b.policy.get(state) {
+                Some(action_b) => {
+                    policy.insert(*state, *action_b);
+                }
+                None => assert!(false, "Unknown policy"),
+            };
+        }
+    }
+    Robot {
+        id,
+        policy,
+        score: 0.0,
+    }
+
+    //     mutation_rand = RANDOM.random()
+    //     if mutation_rand < MUTATION_PROBABILITY:
+    //         action_number = RANDOM.randint(0, len(ALL_ACTIONS) - 1)
+    //         action = ALL_ACTIONS[action_number]
+    //         child_robot[stim] = action
+}
+
 fn main() {
     let seed = 1;
     let mut rng: Gen = Pcg64::seed_from_u64(seed);
@@ -279,29 +308,32 @@ fn main() {
     println!("Creating a population of size: {}", POPULATION_SIZE);
     let mut population: Vec<Robot> = Vec::new();
     for _ in 0..POPULATION_SIZE {
-        let robot_id = id_count;
+        let robot = create_random_robot(&mut rng, id_count);
         id_count += 1;
-        let robot = create_random_robot(&mut rng, robot_id);
         population.push(robot);
     }
 
-    println!("Evaluating population...");
     for generation_number in 0..N_GENERATIONS {
-        println!("Generation: {}", generation_number);
-        let mut best_score = 0.0;
-        for robot in &mut population {
-            let score = evaluate_robot(&mut rng, robot);
-            robot.score = score;
-            if score > best_score {
-                println!("New best score: {}", score);
-                best_score = score
-            }
+        print!("Generation: {}", generation_number);
+        for mut robot in &mut population {
+            robot.score = evaluate_robot(&mut rng, robot);
         }
 
         population.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+        population.truncate(SELECTION_SIZE);
 
-        for robot in &population[0..10] {
-            println!("Robot {} scored {}", robot.id, robot.score)
+        let best_robot = &population[0];
+        println!(
+            " => best score {} (robot {})",
+            best_robot.score, best_robot.id
+        );
+
+        while population.len() < POPULATION_SIZE as usize {
+            let parent_a = &population[rng.gen_range(0..10)];
+            let parent_b = &population[rng.gen_range(0..10)];
+            let child = crossover_robots(&mut rng, parent_a, parent_b, id_count);
+            id_count += 1;
+            population.push(child);
         }
     }
 }

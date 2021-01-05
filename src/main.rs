@@ -1,20 +1,20 @@
+mod action;
+mod agent;
+mod object;
+mod state;
+
+use action::Action;
+use agent::Agent;
+use object::Object;
+use state::State;
+
 use rand::{Rng, SeedableRng};
 use rand_pcg::{Lcg128Xsl64, Pcg64};
 use std::collections::HashMap;
 
-mod action;
-mod object;
-mod robot;
-mod state;
-
-use action::Action;
-use object::Object;
-use robot::Robot;
-use state::State;
-
 const WIDTH: usize = 15;
 const HEIGHT: usize = 15;
-const N_CANS: u32 = 70;
+const N_GOALS: u32 = 70;
 
 const N_GENERATIONS: u32 = 200;
 const N_TRIALS: u32 = 1;
@@ -24,10 +24,8 @@ const POPULATION_SIZE: usize = 400;
 const SELECTION_SIZE: usize = 30;
 const MUTATION_PROBABILITY: f32 = 0.01;
 
-const ALL_OBJECTS: [Object; 3] = [Object::Empty, Object::Can, Object::Wall];
-
 type Gen = Lcg128Xsl64;
-type Room = [[Object; WIDTH]; HEIGHT];
+type World = [[Object; WIDTH]; HEIGHT];
 type Location = (usize, usize);
 
 fn get_random_action(rng: &mut Gen, move_only: bool) -> Action {
@@ -58,12 +56,12 @@ fn is_deterministic_action(action: Action) -> bool {
         || action == Action::PickUp;
 }
 
-fn print_room(room: Room, location: Location) {
+fn print_world(world: World, location: Location) {
     let (row, col) = location;
 
     for r in 0..HEIGHT {
         for c in 0..WIDTH {
-            let cell = room[r][c];
+            let cell = world[r][c];
             if r == row && c == col {
                 print!("\x1B[31m{}\x1B[0m ", cell);
             } else if (r as i32 - row as i32).abs() < 2 && (c as i32 - col as i32).abs() < 2 {
@@ -82,42 +80,43 @@ fn get_random_location(rng: &mut Gen) -> Location {
     (row, col)
 }
 
-fn create_random_room(rng: &mut Gen) -> Room {
-    let mut room = [[Object::Empty; WIDTH]; HEIGHT];
+fn create_random_world(rng: &mut Gen) -> World {
+    let mut world = [[Object::Empty; WIDTH]; HEIGHT];
 
     // Add walls
     for row in 0..HEIGHT {
-        room[row][0] = Object::Wall;
-        room[row][WIDTH - 1] = Object::Wall;
+        world[row][0] = Object::Wall;
+        world[row][WIDTH - 1] = Object::Wall;
     }
     for col in 0..WIDTH {
-        room[0][col] = Object::Wall;
-        room[HEIGHT - 1][col] = Object::Wall;
+        world[0][col] = Object::Wall;
+        world[HEIGHT - 1][col] = Object::Wall;
     }
 
-    // Add cans
-    for _ in 0..N_CANS {
+    // Add goals
+    for _ in 0..N_GOALS {
         loop {
             let (row, col) = get_random_location(rng);
-            if room[row][col] == Object::Empty {
-                room[row][col] = Object::Can;
+            if world[row][col] == Object::Empty {
+                world[row][col] = Object::Goal;
                 break;
             }
         }
     }
 
-    room
+    world
 }
 
-fn create_random_robot(rng: &mut Gen, id: i32) -> Robot {
+fn create_random_agent(rng: &mut Gen, id: i32) -> Agent {
     let mut policy: HashMap<State, Action> = HashMap::new();
 
     // TODO: Fix this to use something like itertools cartesian product
-    for up in &ALL_OBJECTS {
-        for down in &ALL_OBJECTS {
-            for left in &ALL_OBJECTS {
-                for right in &ALL_OBJECTS {
-                    for center in &ALL_OBJECTS {
+    let objects: [Object; 3] = [Object::Empty, Object::Goal, Object::Wall];
+    for up in &objects {
+        for down in &objects {
+            for left in &objects {
+                for right in &objects {
+                    for center in &objects {
                         if *center == Object::Wall {
                             continue;
                         }
@@ -143,30 +142,30 @@ fn create_random_robot(rng: &mut Gen, id: i32) -> Robot {
         }
     }
 
-    Robot {
+    Agent {
         id,
         policy,
         score: 0.0,
     }
 }
 
-fn get_state(room: Room, location: Location) -> State {
+fn get_state(world: World, location: Location) -> State {
     let (row, col) = location;
     assert!(row > 0 && row < HEIGHT - 1);
     assert!(col > 0 && col < WIDTH - 1);
 
     State {
-        up: room[row - 1][col],
-        down: room[row + 1][col],
-        left: room[row][col - 1],
-        right: room[row][col + 1],
-        center: room[row][col],
+        up: world[row - 1][col],
+        down: world[row + 1][col],
+        left: world[row][col - 1],
+        right: world[row][col + 1],
+        center: world[row][col],
     }
 }
 
-fn update_room(
+fn update_world(
     rng: &mut Gen,
-    room: &mut Room,
+    world: &mut World,
     location: Location,
     action: Action,
 ) -> (Location, i32) {
@@ -174,32 +173,32 @@ fn update_room(
     let (mut row, mut col) = location;
     match action {
         Action::MoveUp => {
-            if room[row - 1][col] != Object::Wall {
+            if world[row - 1][col] != Object::Wall {
                 row -= 1;
             }
         }
         Action::MoveDown => {
-            if room[row + 1][col] != Object::Wall {
+            if world[row + 1][col] != Object::Wall {
                 row += 1;
             }
         }
         Action::MoveLeft => {
-            if room[row][col - 1] != Object::Wall {
+            if world[row][col - 1] != Object::Wall {
                 col -= 1;
             }
         }
         Action::MoveRight => {
-            if room[row][col + 1] != Object::Wall {
+            if world[row][col + 1] != Object::Wall {
                 col += 1;
             }
         }
         Action::MoveRandom => {
             let random_move = get_random_action(rng, true);
-            return update_room(rng, room, location, random_move);
+            return update_world(rng, world, location, random_move);
         }
         Action::PickUp => {
-            if room[row][col] == Object::Can {
-                room[row][col] = Object::Empty;
+            if world[row][col] == Object::Goal {
+                world[row][col] = Object::Empty;
                 score += 1;
             }
         }
@@ -207,24 +206,25 @@ fn update_room(
     ((row, col), score)
 }
 
-fn evaluate_robot(rng: &mut Gen, robot: &Robot, debug: bool) -> f32 {
-    let mut room = create_random_room(rng);
+fn evaluate_agent(rng: &mut Gen, agent: &Agent, debug: bool) -> f32 {
+    let mut world = create_random_world(rng);
     let mut location = get_random_location(rng);
     let mut total_score = 0;
     for _ in 0..N_TRIALS {
         let mut trial_score = 0;
         for _ in 0..N_STEPS {
-            let state = get_state(room, location);
-            match robot.policy.get(&state) {
+            let state = get_state(world, location);
+            match agent.policy.get(&state) {
                 Some(action) => {
-                    let (new_location, step_score) = update_room(rng, &mut room, location, *action);
+                    let (new_location, step_score) =
+                        update_world(rng, &mut world, location, *action);
                     if debug {
                         println!("\nPerform {}", *action);
                         println!(
                             "Location ({}, {}) -> ({}, {})",
                             location.0, location.1, new_location.0, new_location.1
                         );
-                        print_room(room, new_location);
+                        print_world(world, new_location);
                     }
                     let updated = new_location != location || step_score != 0;
                     if is_deterministic_action(*action) && !updated {
@@ -241,7 +241,7 @@ fn evaluate_robot(rng: &mut Gen, robot: &Robot, debug: bool) -> f32 {
     (total_score as f32) * 1.0 / (N_TRIALS as f32)
 }
 
-fn crossover_robots(rng: &mut Gen, parent_a: &Robot, parent_b: &Robot, id: i32) -> Robot {
+fn crossover_agents(rng: &mut Gen, parent_a: &Agent, parent_b: &Agent, id: i32) -> Agent {
     let mut policy: HashMap<State, Action> = HashMap::new();
     let parent_fraction: f32 = rng.gen();
     for (state, action_a) in &parent_a.policy {
@@ -263,7 +263,7 @@ fn crossover_robots(rng: &mut Gen, parent_a: &Robot, parent_b: &Robot, id: i32) 
         }
     }
 
-    Robot {
+    Agent {
         id,
         policy,
         score: 0.0,
@@ -277,48 +277,48 @@ fn main() {
     let mut id_count = 0;
 
     println!("Creating a population of size: {}", POPULATION_SIZE);
-    let mut population: Vec<Robot> = Vec::new();
+    let mut population: Vec<Agent> = Vec::new();
     for _ in 0..POPULATION_SIZE {
-        let robot = create_random_robot(&mut rng, id_count);
+        let agent = create_random_agent(&mut rng, id_count);
         id_count += 1;
-        population.push(robot);
+        population.push(agent);
     }
 
-    let mut best_robot_id = 0;
+    let mut best_agent_id = 0;
     for generation_number in 0..N_GENERATIONS {
         print!("Generation {}", generation_number);
 
-        // Evaluate all robots
-        for mut robot in &mut population {
-            robot.score = evaluate_robot(&mut rng, robot, false);
+        // Evaluate all agents
+        for mut agent in &mut population {
+            agent.score = evaluate_agent(&mut rng, agent, false);
         }
 
-        // Drop all robots except some of the best
+        // Drop all agents except some of the best
         population.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
         population.truncate(SELECTION_SIZE);
 
         // Get the best score obtained
-        let best_robot_of_generation = &population[0];
-        best_robot_id = best_robot_of_generation.id;
-        println!(" => best score {}", best_robot_of_generation.score);
+        let best_agent_of_generation = &population[0];
+        best_agent_id = best_agent_of_generation.id;
+        println!(" => best score {}", best_agent_of_generation.score);
 
-        // Fill population with crossover children of existing robots
+        // Fill population with crossover children of existing agents
         while population.len() < POPULATION_SIZE as usize {
             let parent_a = &population[rng.gen_range(0..SELECTION_SIZE)];
             let parent_b = &population[rng.gen_range(0..SELECTION_SIZE)];
-            let child = crossover_robots(&mut rng, parent_a, parent_b, id_count);
+            let child = crossover_agents(&mut rng, parent_a, parent_b, id_count);
             id_count += 1;
             population.push(child);
         }
     }
 
-    // Evaluate best robot again
+    // Evaluate best agent again
     let debug = false;
-    for robot in &population {
-        if robot.id == best_robot_id {
-            println!("Previous best score: {}", robot.score);
+    for agent in &population {
+        if agent.id == best_agent_id {
+            println!("Previous best score: {}", agent.score);
             for _ in 0..1 {
-                let best_score = evaluate_robot(&mut rng, &robot, debug);
+                let best_score = evaluate_agent(&mut rng, &agent, debug);
                 println!("Best test score: {}", best_score);
             }
         }

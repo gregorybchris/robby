@@ -3,17 +3,17 @@ use rand_pcg::{Lcg128Xsl64, Pcg64};
 use std::collections::HashMap;
 use std::fmt;
 
-const WIDTH: usize = 12;
-const HEIGHT: usize = 10;
-const N_CANS: u32 = 25;
+const WIDTH: usize = 15;
+const HEIGHT: usize = 15;
+const N_CANS: u32 = 70;
 
-const N_GENERATIONS: u32 = 50;
+const N_GENERATIONS: u32 = 200;
 const N_TRIALS: u32 = 1;
-const N_STEPS: u32 = 300;
+const N_STEPS: u32 = 100;
 
-const POPULATION_SIZE: usize = 100;
-const SELECTION_SIZE: usize = 20;
-const MUTATION_PROBABILITY: f32 = 0.001;
+const POPULATION_SIZE: usize = 400;
+const SELECTION_SIZE: usize = 30;
+const MUTATION_PROBABILITY: f32 = 0.01;
 
 type Gen = Lcg128Xsl64;
 type Room = [[Object; WIDTH]; HEIGHT];
@@ -84,20 +84,31 @@ fn get_random_action(rng: &mut Gen, move_only: bool) -> Action {
 
 const ALL_OBJECTS: [Object; 3] = [Object::Empty, Object::Can, Object::Wall];
 
-// fn print_state(state: State) {
-//     println!("[ {} ]", state.up);
-//     println!("[{}{}{}]", state.left, state.center, state.right);
-//     println!("[ {} ]", state.down);
-// }
+fn is_deterministic_action(action: Action) -> bool {
+    return action == Action::MoveUp
+        || action == Action::MoveDown
+        || action == Action::MoveLeft
+        || action == Action::MoveRight
+        || action == Action::PickUp;
+}
 
-// fn print_room(room: Room) {
-//     for row in &room {
-//         for cell in row {
-//             print!("{} ", cell);
-//         }
-//         println!("");
-//     }
-// }
+fn print_room(room: Room, location: Location) {
+    let (row, col) = location;
+
+    for r in 0..HEIGHT {
+        for c in 0..WIDTH {
+            let cell = room[r][c];
+            if r == row && c == col {
+                print!("\x1B[31m{}\x1B[0m ", cell);
+            } else if (r as i32 - row as i32).abs() < 2 && (c as i32 - col as i32).abs() < 2 {
+                print!("\x1B[34m{}\x1B[0m ", cell);
+            } else {
+                print!("{} ", cell);
+            }
+        }
+        println!("")
+    }
+}
 
 fn get_random_location(rng: &mut Gen) -> Location {
     let row = rng.gen_range(1..=HEIGHT - 2);
@@ -207,9 +218,8 @@ fn update_room(
     location: Location,
     action: Action,
 ) -> (Location, i32) {
-    let mut score = 0;
+    let mut score: i32 = 0;
     let (mut row, mut col) = location;
-    // println!("Performing action {}", action);
     match action {
         Action::MoveUp => {
             if room[row - 1][col] != Object::Wall {
@@ -245,20 +255,29 @@ fn update_room(
     ((row, col), score)
 }
 
-fn evaluate_robot(rng: &mut Gen, robot: &Robot) -> f32 {
+fn evaluate_robot(rng: &mut Gen, robot: &Robot, debug: bool) -> f32 {
     let mut room = create_random_room(rng);
-    // print_room(room);
     let mut location = get_random_location(rng);
     let mut total_score = 0;
     for _ in 0..N_TRIALS {
         let mut trial_score = 0;
         for _ in 0..N_STEPS {
             let state = get_state(room, location);
-            // println!("Robot at {}, {}", location.0, location.1);
-            // print_state(state);
             match robot.policy.get(&state) {
                 Some(action) => {
                     let (new_location, step_score) = update_room(rng, &mut room, location, *action);
+                    if debug {
+                        println!("\nPerform {}", *action);
+                        println!(
+                            "Location ({}, {}) -> ({}, {})",
+                            location.0, location.1, new_location.0, new_location.1
+                        );
+                        print_room(room, new_location);
+                    }
+                    let updated = new_location != location || step_score != 0;
+                    if is_deterministic_action(*action) && !updated {
+                        break;
+                    }
                     location = new_location;
                     trial_score += step_score;
                 }
@@ -313,27 +332,42 @@ fn main() {
         population.push(robot);
     }
 
+    let mut best_robot_id = 0;
     for generation_number in 0..N_GENERATIONS {
-        print!("Generation: {}", generation_number);
+        print!("Generation {}", generation_number);
+
+        // Evaluate all robots
         for mut robot in &mut population {
-            robot.score = evaluate_robot(&mut rng, robot);
+            robot.score = evaluate_robot(&mut rng, robot, false);
         }
 
+        // Drop all robots except some of the best
         population.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
         population.truncate(SELECTION_SIZE);
 
-        let best_robot = &population[0];
-        println!(
-            " => best score {} (robot {})",
-            best_robot.score, best_robot.id
-        );
+        // Get the best score obtained
+        let best_robot_of_generation = &population[0];
+        best_robot_id = best_robot_of_generation.id;
+        println!(" => best score {}", best_robot_of_generation.score);
 
+        // Fill population with crossover children of existing robots
         while population.len() < POPULATION_SIZE as usize {
             let parent_a = &population[rng.gen_range(0..SELECTION_SIZE)];
             let parent_b = &population[rng.gen_range(0..SELECTION_SIZE)];
             let child = crossover_robots(&mut rng, parent_a, parent_b, id_count);
             id_count += 1;
             population.push(child);
+        }
+    }
+
+    let debug = false;
+    for robot in &population {
+        if robot.id == best_robot_id {
+            println!("Previous best score: {}", robot.score);
+            for _ in 0..1 {
+                let best_score = evaluate_robot(&mut rng, &robot, debug);
+                println!("Best test score: {}", best_score);
+            }
         }
     }
 }

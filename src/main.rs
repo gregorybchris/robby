@@ -1,7 +1,16 @@
 use rand::{Rng, SeedableRng};
 use rand_pcg::{Lcg128Xsl64, Pcg64};
 use std::collections::HashMap;
-use std::fmt;
+
+mod action;
+mod object;
+mod robot;
+mod state;
+
+use action::Action;
+use object::Object;
+use robot::Robot;
+use state::State;
 
 const WIDTH: usize = 15;
 const HEIGHT: usize = 15;
@@ -15,52 +24,11 @@ const POPULATION_SIZE: usize = 400;
 const SELECTION_SIZE: usize = 30;
 const MUTATION_PROBABILITY: f32 = 0.01;
 
+const ALL_OBJECTS: [Object; 3] = [Object::Empty, Object::Can, Object::Wall];
+
 type Gen = Lcg128Xsl64;
 type Room = [[Object; WIDTH]; HEIGHT];
 type Location = (usize, usize);
-type ID = i32;
-
-#[derive(PartialEq, Eq, Copy, Clone, Hash, Debug)]
-enum Object {
-    Empty,
-    Can,
-    Wall,
-}
-
-impl fmt::Display for Object {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let c = match self {
-            Self::Empty => '_',
-            Self::Can => 'O',
-            Self::Wall => '#',
-        };
-        write!(f, "{}", c)
-    }
-}
-
-#[derive(PartialEq, Copy, Clone, Debug)]
-enum Action {
-    MoveUp,
-    MoveDown,
-    MoveLeft,
-    MoveRight,
-    MoveRandom,
-    PickUp,
-}
-
-impl fmt::Display for Action {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let c = match self {
-            Self::MoveUp => 'U',
-            Self::MoveDown => 'D',
-            Self::MoveLeft => 'L',
-            Self::MoveRight => 'R',
-            Self::MoveRandom => '?',
-            Self::PickUp => 'P',
-        };
-        write!(f, "{}", c)
-    }
-}
 
 fn get_random_action(rng: &mut Gen, move_only: bool) -> Action {
     if move_only {
@@ -81,8 +49,6 @@ fn get_random_action(rng: &mut Gen, move_only: bool) -> Action {
         }
     }
 }
-
-const ALL_OBJECTS: [Object; 3] = [Object::Empty, Object::Can, Object::Wall];
 
 fn is_deterministic_action(action: Action) -> bool {
     return action == Action::MoveUp
@@ -143,22 +109,7 @@ fn create_random_room(rng: &mut Gen) -> Room {
     room
 }
 
-#[derive(PartialEq, Eq, Copy, Clone, Hash, Debug)]
-struct State {
-    up: Object,
-    down: Object,
-    left: Object,
-    right: Object,
-    center: Object,
-}
-
-struct Robot {
-    id: ID,
-    policy: HashMap<State, Action>,
-    score: f32,
-}
-
-fn create_random_robot(rng: &mut Gen, id: ID) -> Robot {
+fn create_random_robot(rng: &mut Gen, id: i32) -> Robot {
     let mut policy: HashMap<State, Action> = HashMap::new();
 
     // TODO: Fix this to use something like itertools cartesian product
@@ -289,7 +240,7 @@ fn evaluate_robot(rng: &mut Gen, robot: &Robot, debug: bool) -> f32 {
     (total_score as f32) * 1.0 / (N_TRIALS as f32)
 }
 
-fn crossover_robots(rng: &mut Gen, parent_a: &Robot, parent_b: &Robot, id: ID) -> Robot {
+fn crossover_robots(rng: &mut Gen, parent_a: &Robot, parent_b: &Robot, id: i32) -> Robot {
     let mut policy: HashMap<State, Action> = HashMap::new();
     let parent_fraction: f32 = rng.gen();
     for (state, action_a) in &parent_a.policy {
@@ -360,6 +311,7 @@ fn main() {
         }
     }
 
+    // Evaluate best robot again
     let debug = false;
     for robot in &population {
         if robot.id == best_robot_id {

@@ -118,13 +118,6 @@ fn create_random_robot(rng: &mut Gen, id: i32) -> Robot {
             for left in &ALL_OBJECTS {
                 for right in &ALL_OBJECTS {
                     for center in &ALL_OBJECTS {
-                        let state = State {
-                            up: *up,
-                            down: *down,
-                            left: *left,
-                            right: *right,
-                            center: *center,
-                        };
                         if *center == Object::Wall {
                             continue;
                         }
@@ -134,6 +127,14 @@ fn create_random_robot(rng: &mut Gen, id: i32) -> Robot {
                         if *left == Object::Wall && *right == Object::Wall {
                             continue;
                         }
+
+                        let state = State {
+                            up: *up,
+                            down: *down,
+                            left: *left,
+                            right: *right,
+                            center: *center,
+                        };
                         let action = get_random_action(rng, false);
                         policy.insert(state, action);
                     }

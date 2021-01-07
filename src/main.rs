@@ -1,10 +1,12 @@
 mod action;
 mod agent;
+mod color;
 mod object;
 mod state;
 
 use action::Action;
 use agent::Agent;
+use color::{print_color, Color};
 use object::Object;
 use state::State;
 
@@ -28,46 +30,43 @@ type Gen = Lcg128Xsl64;
 type World = [[Object; WIDTH]; HEIGHT];
 type Location = (usize, usize);
 
-fn get_random_action(rng: &mut Gen, move_only: bool) -> Action {
-    if move_only {
-        match rng.gen_range(0..4) {
-            0 => Action::MoveUp,
-            1 => Action::MoveDown,
-            2 => Action::MoveLeft,
-            _ => Action::MoveRight,
-        }
-    } else {
-        match rng.gen_range(0..6) {
-            0 => Action::MoveUp,
-            1 => Action::MoveDown,
-            2 => Action::MoveLeft,
-            3 => Action::MoveRight,
-            4 => Action::MoveRandom,
-            _ => Action::PickUp,
-        }
+fn get_random_action(rng: &mut Gen) -> Action {
+    match rng.gen_range(0..6) {
+        0 => Action::MoveUp,
+        1 => Action::MoveDown,
+        2 => Action::MoveLeft,
+        3 => Action::MoveRight,
+        4 => Action::MoveRandom,
+        _ => Action::PickUp,
     }
 }
 
-fn is_deterministic_action(action: Action) -> bool {
-    return action == Action::MoveUp
-        || action == Action::MoveDown
-        || action == Action::MoveLeft
-        || action == Action::MoveRight
-        || action == Action::PickUp;
+fn get_random_move(rng: &mut Gen) -> Action {
+    match rng.gen_range(0..4) {
+        0 => Action::MoveUp,
+        1 => Action::MoveDown,
+        2 => Action::MoveLeft,
+        _ => Action::MoveRight,
+    }
+}
+
+fn udistance(x1: usize, y1: usize, x2: usize, y2: usize) -> f32 {
+    let (x1, y1, x2, y2) = (x1 as f32, y1 as f32, x2 as f32, y2 as f32);
+    ((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)).sqrt()
 }
 
 fn print_world(world: World, location: Location) {
     let (row, col) = location;
-
     for r in 0..HEIGHT {
         for c in 0..WIDTH {
-            let cell = world[r][c];
-            if r == row && c == col {
-                print!("\x1B[31m{}\x1B[0m ", cell);
-            } else if (r as i32 - row as i32).abs() < 2 && (c as i32 - col as i32).abs() < 2 {
-                print!("\x1B[34m{}\x1B[0m ", cell);
+            let object_string = format!("{} ", world[r][c]);
+            let distance = udistance(r, c, row, col);
+            if distance == 0.0 {
+                print_color(object_string, Color::Red);
+            } else if distance < 2.0 {
+                print_color(object_string, Color::Blue);
             } else {
-                print!("{} ", cell);
+                print_color(object_string, Color::Default);
             }
         }
         println!("")
@@ -75,12 +74,13 @@ fn print_world(world: World, location: Location) {
 }
 
 fn get_random_location(rng: &mut Gen) -> Location {
-    let row = rng.gen_range(1..=HEIGHT - 2);
-    let col = rng.gen_range(1..=WIDTH - 2);
-    (row, col)
+    (rng.gen_range(1..=HEIGHT - 2), rng.gen_range(1..=WIDTH - 2))
 }
 
 fn create_random_world(rng: &mut Gen) -> World {
+    assert!(WIDTH > 3);
+    assert!(HEIGHT > 3);
+
     let mut world = [[Object::Empty; WIDTH]; HEIGHT];
 
     // Add walls
@@ -117,13 +117,11 @@ fn create_random_agent(rng: &mut Gen, id: i32) -> Agent {
             for left in &objects {
                 for right in &objects {
                     for center in &objects {
-                        if *center == Object::Wall {
-                            continue;
-                        }
-                        if *up == Object::Wall && *down == Object::Wall {
-                            continue;
-                        }
-                        if *left == Object::Wall && *right == Object::Wall {
+                        // Impossible to get to these states
+                        if *center == Object::Wall
+                            || *up == Object::Wall && *down == Object::Wall
+                            || *left == Object::Wall && *right == Object::Wall
+                        {
                             continue;
                         }
 
@@ -134,7 +132,7 @@ fn create_random_agent(rng: &mut Gen, id: i32) -> Agent {
                             right: *right,
                             center: *center,
                         };
-                        let action = get_random_action(rng, false);
+                        let action = get_random_action(rng);
                         policy.insert(state, action);
                     }
                 }
@@ -193,7 +191,7 @@ fn update_world(
             }
         }
         Action::MoveRandom => {
-            let random_move = get_random_action(rng, true);
+            let random_move = get_random_move(rng);
             return update_world(rng, world, location, random_move);
         }
         Action::PickUp => {
@@ -207,6 +205,9 @@ fn update_world(
 }
 
 fn evaluate_agent(rng: &mut Gen, agent: &Agent, debug: bool) -> f32 {
+    if debug {
+        println!("Evaluating agent {}", agent.id);
+    }
     let mut world = create_random_world(rng);
     let mut location = get_random_location(rng);
     let mut total_score = 0;
@@ -219,7 +220,7 @@ fn evaluate_agent(rng: &mut Gen, agent: &Agent, debug: bool) -> f32 {
                     let (new_location, step_score) =
                         update_world(rng, &mut world, location, *action);
                     if debug {
-                        println!("\nPerform {}", *action);
+                        println!("Perform {}", *action);
                         println!(
                             "Location ({}, {}) -> ({}, {})",
                             location.0, location.1, new_location.0, new_location.1
@@ -227,7 +228,7 @@ fn evaluate_agent(rng: &mut Gen, agent: &Agent, debug: bool) -> f32 {
                         print_world(world, new_location);
                     }
                     let updated = new_location != location || step_score != 0;
-                    if is_deterministic_action(*action) && !updated {
+                    if *action != Action::MoveRandom && !updated {
                         break;
                     }
                     location = new_location;
@@ -245,6 +246,7 @@ fn crossover_agents(rng: &mut Gen, parent_a: &Agent, parent_b: &Agent, id: i32) 
     let mut policy: HashMap<State, Action> = HashMap::new();
     let parent_fraction: f32 = rng.gen();
     for (state, action_a) in &parent_a.policy {
+        // Take state-action pair from random parent
         let parent_rand: f32 = rng.gen();
         if parent_rand < parent_fraction {
             policy.insert(*state, *action_a);
@@ -256,10 +258,11 @@ fn crossover_agents(rng: &mut Gen, parent_a: &Agent, parent_b: &Agent, id: i32) 
                 None => assert!(false, "Unknown policy"),
             };
         }
+
+        // Random mutation
         let mutation_rand: f32 = rng.gen();
         if mutation_rand < MUTATION_PROBABILITY {
-            let random_action = get_random_action(rng, false);
-            policy.insert(*state, random_action);
+            policy.insert(*state, get_random_action(rng));
         }
     }
 

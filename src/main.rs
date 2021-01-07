@@ -10,21 +10,24 @@ use color::{print_color, Color};
 use object::Object;
 use state::State;
 
+use itertools::iproduct;
 use rand::{Rng, SeedableRng};
 use rand_pcg::{Lcg128Xsl64, Pcg64};
 use std::collections::BTreeMap;
 
+const SEED: u64 = 0;
+
 const WIDTH: usize = 15;
 const HEIGHT: usize = 15;
-const N_GOALS: u32 = 70;
+const N_GOALS: u32 = 90;
 
 const N_GENERATIONS: u32 = 200;
 const N_TRIALS: u32 = 1;
-const N_STEPS: u32 = 100;
+const N_STEPS: u32 = 150;
 
-const POPULATION_SIZE: usize = 400;
-const SELECTION_SIZE: usize = 30;
-const MUTATION_PROBABILITY: f32 = 0.01;
+const POPULATION_SIZE: usize = 500;
+const SELECTION_SIZE: usize = 20;
+const MUTATION_PROBABILITY: f32 = 0.005;
 
 type Gen = Lcg128Xsl64;
 type World = [[Object; WIDTH]; HEIGHT];
@@ -110,34 +113,27 @@ fn create_random_world(rng: &mut Gen) -> World {
 fn create_random_agent(rng: &mut Gen, id: i32) -> Agent {
     let mut policy: BTreeMap<State, Action> = BTreeMap::new();
 
-    // TODO: Fix this to use something like itertools cartesian product
     let objects: [Object; 3] = [Object::Empty, Object::Goal, Object::Wall];
-    for up in &objects {
-        for down in &objects {
-            for left in &objects {
-                for right in &objects {
-                    for center in &objects {
-                        // Impossible to get to these states
-                        if *center == Object::Wall
-                            || *up == Object::Wall && *down == Object::Wall
-                            || *left == Object::Wall && *right == Object::Wall
-                        {
-                            continue;
-                        }
-
-                        let state = State {
-                            up: *up,
-                            down: *down,
-                            left: *left,
-                            right: *right,
-                            center: *center,
-                        };
-                        let action = get_random_action(rng);
-                        policy.insert(state, action);
-                    }
-                }
-            }
+    for (up, down, left, right, center) in
+        iproduct!(&objects, &objects, &objects, &objects, &objects)
+    {
+        // Impossible to get to these states
+        let on_wall = *center == Object::Wall;
+        let small_vertical = *up == Object::Wall && *down == Object::Wall;
+        let small_horizontal = *left == Object::Wall && *right == Object::Wall;
+        if on_wall || small_vertical || small_horizontal {
+            continue;
         }
+
+        let state = State {
+            up: *up,
+            down: *down,
+            left: *left,
+            right: *right,
+            center: *center,
+        };
+        let action = get_random_action(rng);
+        policy.insert(state, action);
     }
 
     Agent {
@@ -274,8 +270,7 @@ fn crossover_agents(rng: &mut Gen, parent_a: &Agent, parent_b: &Agent, id: i32) 
 }
 
 fn main() {
-    let seed = 1;
-    let mut rng: Gen = Pcg64::seed_from_u64(seed);
+    let mut rng: Gen = Pcg64::seed_from_u64(SEED);
 
     let mut id_count = 0;
 
@@ -315,14 +310,12 @@ fn main() {
         }
     }
 
-    // Evaluate best agent again
-    let debug = false;
+    // Perform a final evaluation on the best agent to mitigate bias
     for agent in &population {
         if agent.id == best_agent_id {
-            println!("Previous best score: {}", agent.score);
             for _ in 0..1 {
-                let best_score = evaluate_agent(&mut rng, &agent, debug);
-                println!("Best test score: {}", best_score);
+                let best_score = evaluate_agent(&mut rng, &agent, false);
+                println!("Best agent final score: {}", best_score);
             }
         }
     }

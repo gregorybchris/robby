@@ -12,7 +12,7 @@ use state::State;
 
 use rand::{Rng, SeedableRng};
 use rand_pcg::{Lcg128Xsl64, Pcg64};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 const WIDTH: usize = 15;
 const HEIGHT: usize = 15;
@@ -108,7 +108,7 @@ fn create_random_world(rng: &mut Gen) -> World {
 }
 
 fn create_random_agent(rng: &mut Gen, id: i32) -> Agent {
-    let mut policy: HashMap<State, Action> = HashMap::new();
+    let mut policy: BTreeMap<State, Action> = BTreeMap::new();
 
     // TODO: Fix this to use something like itertools cartesian product
     let objects: [Object; 3] = [Object::Empty, Object::Goal, Object::Wall];
@@ -243,7 +243,7 @@ fn evaluate_agent(rng: &mut Gen, agent: &Agent, debug: bool) -> f32 {
 }
 
 fn crossover_agents(rng: &mut Gen, parent_a: &Agent, parent_b: &Agent, id: i32) -> Agent {
-    let mut policy: HashMap<State, Action> = HashMap::new();
+    let mut policy: BTreeMap<State, Action> = BTreeMap::new();
     let parent_fraction: f32 = rng.gen();
     for (state, action_a) in &parent_a.policy {
         // Take state-action pair from random parent

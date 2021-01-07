@@ -1,6 +1,6 @@
 use crate::object::Object;
 
-#[derive(PartialEq, Eq, Copy, Clone, Hash, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Hash, Debug, PartialOrd, Ord)]
 pub struct State {
     pub up: Object,
     pub down: Object,
